@@ -7,8 +7,8 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard)
 export class MatchesController {
   constructor(private service: MatchesService) {}
-  @Get(':id')
-  get(@Param('id') id: string) { return this.service.findOne(id); }
   @Get('my/history')
   myHistory(@CurrentUser() user: any) { return this.service.findForUser(user.sub); }
+  @Get(':id')
+  get(@Param('id') id: string) { return this.service.findOne(id); }
 }

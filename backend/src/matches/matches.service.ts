@@ -72,7 +72,12 @@ export class MatchesService {
     }
 
     const chess = new Chess(match.fen);
-    const move = chess.move({ from, to, promotion });
+    let move: any;
+    try {
+      move = chess.move({ from, to, promotion });
+    } catch {
+      throw new BadRequestException('Illegal move');
+    }
     if (!move) throw new BadRequestException('Illegal move');
 
     const newFen = chess.fen();

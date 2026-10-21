@@ -17,5 +17,6 @@ export const api = {
   del: (p:string)=>request(p,{method:'DELETE'}),
 };
 
+export type User = { id: string; email: string; role: 'coach' | 'student'; name: string };
 export type Tournament = { id:string, name:string, timeControlInitial:number, timeControlIncrement:number, startDate:string, status:string, createdById:string };
 export type MatchSummary = { id:string, tournamentId:string, whitePlayerId:string, blackPlayerId:string, status:string, result:string|null, winnerId:string|null, pgn:string, fen:string, whiteTimeMs:number, blackTimeMs:number, turn:string, createdAt:string, finishedAt:string|null };

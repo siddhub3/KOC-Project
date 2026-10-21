@@ -1,13 +1,19 @@
 import type { Config } from 'tailwindcss';
+
 const config: Config = {
-  content: ["./src/**/*.{ts,tsx}"],
+  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
       colors: {
-        brand: { orange: "#ff7a18", blue: "#0f3b5f", cream: "#fef9ec" }
-      }
-    }
+        brand: {
+          orange: '#ff7a18',
+          blue: '#0f3b5f',
+          cream: '#fef9ec',
+        },
+      },
+    },
   },
-  plugins: []
+  plugins: [],
 };
+
 export default config;

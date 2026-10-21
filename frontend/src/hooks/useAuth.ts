@@ -1,6 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, User } from '@/lib/api';
 export function useAuth() {
-  return useQuery({ queryKey: ['me'], queryFn: ()=>api.get('/auth/me'), retry: false });
+  return useQuery<User>({ queryKey: ['me'], queryFn: () => api.get('/auth/me'), retry: false });
 }
