@@ -14,7 +14,9 @@ import { LeaderboardModule } from './leaderboard/leaderboard.module';
     ConfigModule.forRoot({ isGlobal: true }),
     JwtModule.register({
       global: true,
-      secret: process.env.JWT_SECRET || 'super_secret_change_me_in_prod_12345',
+      secret: process.env.JWT_SECRET || (process.env.NODE_ENV === 'production'
+        ? (() => { throw new Error('JWT_SECRET must be configured in production'); })()
+        : 'local_development_only_change_me'),
       signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN as any) || '7d' as any },
     }),
     DrizzleModule,

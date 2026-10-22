@@ -26,6 +26,14 @@ export class MatchesService {
     return m;
   }
 
+  async findOneForUser(id: string, userId: string) {
+    const match = await this.findOne(id);
+    if (match.whitePlayerId !== userId && match.blackPlayerId !== userId) {
+      throw new ForbiddenException('Not a participant');
+    }
+    return match;
+  }
+
   async findForUser(userId: string) {
     return this.db.select().from(matches).where(or(eq(matches.whitePlayerId, userId), eq(matches.blackPlayerId, userId))).orderBy(desc(matches.createdAt)).limit(20);
   }

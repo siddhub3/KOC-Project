@@ -10,5 +10,7 @@ export class MatchesController {
   @Get('my/history')
   myHistory(@CurrentUser() user: any) { return this.service.findForUser(user.sub); }
   @Get(':id')
-  get(@Param('id') id: string) { return this.service.findOne(id); }
+  get(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.service.findOneForUser(id, user.sub);
+  }
 }

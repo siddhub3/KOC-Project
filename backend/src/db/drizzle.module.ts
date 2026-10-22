@@ -11,7 +11,14 @@ export const DRIZZLE = 'DRIZZLE';
     {
       provide: DRIZZLE,
       useFactory: () => {
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/kingdom_chess' });
+        const connectionString = process.env.DATABASE_URL;
+        if (!connectionString) throw new Error('DATABASE_URL must be configured');
+        const pool = new Pool({
+          connectionString,
+          ssl: process.env.DATABASE_SSL === 'true'
+            ? { rejectUnauthorized: false }
+            : undefined,
+        });
         return drizzle(pool, { schema });
       },
     },

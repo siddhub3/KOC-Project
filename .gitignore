@@ -1,9 +1,12 @@
 ﻿node_modules/
-**[STRIPPED 66 bytes].next/
+**/.next/
 backend/dist/
 dist/
 .env
 **/.env
+**/.env.*
+!**/.env.example
+**/tsconfig.tsbuildinfo
 *.log
 .DS_Store
 coverage/

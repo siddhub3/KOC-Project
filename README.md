@@ -21,7 +21,7 @@ Run `npm run seed` in backend after migrations.
 ## Quick Start (Local)
 
 ### 0. Prereqs
-- Node 20+, npm, Docker (for Postgres)
+- Node 20+ and npm. Docker is optional: use Docker Compose for local Postgres, or set `DATABASE_URL` to a Supabase/Neon PostgreSQL database.
 
 ### 1. Clone & Env
 ```bash
@@ -154,3 +154,41 @@ Run `npm test` in backend (Jest placeholder). Add unit tests for services above 
 ## Submission
 
 GitHub/GitLab repo that must run on clean machine from README instructions. Good luck! ♟️
+
+## Supabase and Vercel deployment
+
+The app has two deployable services. Deploy `frontend/` to Vercel. Deploy `backend/` to a Node host that supports a continuously running NestJS process and Socket.IO connections (for example Render, Railway, or Fly.io). Vercel serverless functions are not suitable for this backend's persistent Socket.IO gateway or in-memory matchmaking queue.
+
+### 1. Configure Supabase
+
+In Supabase, open **Project Settings > Database** and copy a PostgreSQL connection string. Use the session pooler connection if the direct database host is unreachable from your deploy host. Keep the password private. Set these backend environment variables:
+
+```text
+DATABASE_URL=<Supabase PostgreSQL connection string>
+DATABASE_SSL=true
+JWT_SECRET=<a unique random secret of at least 32 characters>
+JWT_EXPIRES_IN=7d
+NODE_ENV=production
+PORT=<provided by your backend host>
+FRONTEND_URL=https://<your-vercel-domain>
+```
+
+To create/update tables, run `npm ci` and `npm run db:migrate` from `backend/` against that database before starting the service. The migration files are committed in `backend/drizzle/`. Seed credentials are for local/demo use only; do not seed predictable passwords into a public deployment.
+
+### 2. Deploy the API and WebSocket server
+
+Create a Node service from this repository with `backend/` as its root directory. Use `npm ci` for installation, `npm run build` for the build command, and `npm run start:prod` to start. Configure the environment variables above. Set `FRONTEND_URL` to the exact deployed frontend origin; for Vercel preview deployments, add the preview origin(s) as comma-separated values.
+
+### 3. Deploy the frontend
+
+Import the repository in Vercel and set the project root to `frontend/`. Add this build environment variable:
+
+```text
+NEXT_PUBLIC_API_URL=https://<your-backend-domain>
+```
+
+The frontend appends `/api/v1` for REST requests and uses the same base URL for Socket.IO. Redeploy after setting the value. Use HTTPS for both services. For the most reliable cookie login across browsers, use custom frontend and backend domains under the same parent domain (for example `app.example.com` and `api.example.com`); some browsers restrict cookies between unrelated `vercel.app` and API-host domains.
+
+### Git push size cleanup
+
+`.next/` and TypeScript build metadata are now ignored, and generated build output has been removed from the Git index. The existing first commit still contains the old `.next` objects, so a normal push includes their history even after this cleanup. If GitHub rejects the push due to repository/history size, the repository history must be rewritten to remove `frontend/.next` (for example with `git filter-repo`) and then force-pushed. Coordinate that one-time rewrite with anyone else using the repository; do not force-push over newer remote commits. The current history contains no individual blob above GitHub's 100 MB per-file limit, but totals about 158 MiB.

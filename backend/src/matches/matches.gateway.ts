@@ -29,9 +29,13 @@ export class MatchesGateway implements OnGatewayConnection {
   @SubscribeMessage('match:join')
   async onJoin(@ConnectedSocket() client: Socket, @MessageBody() data: { matchId: string }) {
     const user = (client as any).user;
-    const match = await this.matchesService.findOne(data.matchId);
-    client.join(`match:${data.matchId}`);
-    client.emit('match:state', match);
+    try {
+      const match = await this.matchesService.findOneForUser(data.matchId, user.sub);
+      client.join(`match:${data.matchId}`);
+      client.emit('match:state', match);
+    } catch (e: any) {
+      client.emit('match:error', { message: e.message });
+    }
   }
 
   @SubscribeMessage('match:move')

@@ -12,7 +12,13 @@ export class AuthController {
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const user = await this.auth.validateUser(dto.email, dto.password);
     const { token, user: u } = await this.auth.login(user);
-    res.cookie('access_token', token, { httpOnly: true, secure: false, sameSite: 'lax', maxAge: 7*24*3600*1000, path: '/' });
+    res.cookie('access_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 3600 * 1000,
+      path: '/',
+    });
     return { success: true, data: u, message: 'Logged in' };
   }
   @Post('logout')
