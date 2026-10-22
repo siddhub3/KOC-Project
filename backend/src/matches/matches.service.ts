@@ -1,7 +1,7 @@
 import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { eq, and, or, desc } from 'drizzle-orm';
 import { DRIZZLE } from '../db/drizzle.module';
-import { matches, tournaments } from '../db/schema';
+import { matches, tournaments, users } from '../db/schema';
 import { Chess } from 'chess.js';
 
 @Injectable()
@@ -31,7 +31,21 @@ export class MatchesService {
     if (match.whitePlayerId !== userId && match.blackPlayerId !== userId) {
       throw new ForbiddenException('Not a participant');
     }
-    return match;
+    const [tournament] = await this.db.select({
+      name: tournaments.name,
+      timeControlInitial: tournaments.timeControlInitial,
+      timeControlIncrement: tournaments.timeControlIncrement,
+    }).from(tournaments).where(eq(tournaments.id, match.tournamentId)).limit(1);
+    const [whitePlayer] = await this.db.select({
+      id: users.id,
+      name: users.name,
+    }).from(users).where(eq(users.id, match.whitePlayerId)).limit(1);
+    const [blackPlayer] = await this.db.select({
+      id: users.id,
+      name: users.name,
+    }).from(users).where(eq(users.id, match.blackPlayerId)).limit(1);
+
+    return { ...match, tournament, whitePlayer, blackPlayer };
   }
 
   async findForUser(userId: string) {

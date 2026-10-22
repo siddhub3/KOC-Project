@@ -55,6 +55,11 @@ export function ChessBoardLive({
           allowDragging: !disabled,
           onPieceDrop: handlePieceDrop,
           onSquareClick: handleSquareClick,
+          boardStyle: { borderRadius: '4px' },
+          darkSquareStyle: { backgroundColor: '#769656' },
+          lightSquareStyle: { backgroundColor: '#eeeed2' },
+          darkSquareNotationStyle: { color: '#edf1dd', fontWeight: 700 },
+          lightSquareNotationStyle: { color: '#769656', fontWeight: 700 },
           squareStyles,
         }}
       />

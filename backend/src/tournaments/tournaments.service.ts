@@ -2,6 +2,7 @@ import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenEx
 import { eq, and, desc } from 'drizzle-orm';
 import { tournaments, participants, users, matches } from '../db/schema';
 import { DRIZZLE } from '../db/drizzle.module';
+import { alias } from 'drizzle-orm/pg-core';
 
 @Injectable()
 export class TournamentsService {
@@ -58,7 +59,26 @@ export class TournamentsService {
     return rows;
   }
   async listMatches(tournamentId: string) {
-    return this.db.select().from(matches).where(eq(matches.tournamentId, tournamentId)).orderBy(desc(matches.createdAt));
+    const whitePlayer = alias(users, 'white_player');
+    const blackPlayer = alias(users, 'black_player');
+    return this.db.select({
+      id: matches.id,
+      tournamentId: matches.tournamentId,
+      whitePlayerId: matches.whitePlayerId,
+      blackPlayerId: matches.blackPlayerId,
+      whitePlayer: { id: whitePlayer.id, name: whitePlayer.name },
+      blackPlayer: { id: blackPlayer.id, name: blackPlayer.name },
+      status: matches.status,
+      result: matches.result,
+      resultReason: matches.resultReason,
+      winnerId: matches.winnerId,
+      createdAt: matches.createdAt,
+      finishedAt: matches.finishedAt,
+    }).from(matches)
+      .leftJoin(whitePlayer, eq(matches.whitePlayerId, whitePlayer.id))
+      .leftJoin(blackPlayer, eq(matches.blackPlayerId, blackPlayer.id))
+      .where(eq(matches.tournamentId, tournamentId))
+      .orderBy(desc(matches.createdAt));
   }
   async isParticipant(tournamentId: string, userId: string) {
     const r = await this.db.select().from(participants).where(and(eq(participants.tournamentId, tournamentId), eq(participants.userId, userId))).limit(1);

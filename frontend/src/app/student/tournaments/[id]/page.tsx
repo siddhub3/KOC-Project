@@ -1,49 +1,141 @@
 'use client';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Leaderboard } from '@/components/Leaderboard';
 import { useAuth } from '@/hooks/useAuth';
 import { getSocket } from '@/lib/socket';
-import { useEffect, useState } from 'react';
+
+type TournamentDetails = { id: string; name: string; timeControlInitial: number; timeControlIncrement: number; startDate: string; status: string };
+type Participant = { id: string; name: string; email: string };
+type TournamentMatch = { id: string; whitePlayerId: string; blackPlayerId: string; whitePlayer?: Participant; blackPlayer?: Participant; status: string; result?: string | null; createdAt: string };
 
 export default function StudentTournamentDetail() {
-  const { id } = useParams() as { id:string };
-  const router=useRouter();
-  const qc=useQueryClient();
+  const { id } = useParams() as { id: string };
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: me } = useAuth();
-  const { data: tour } = useQuery({ queryKey:['tournament',id], queryFn:()=>api.get(`/tournaments/${id}`) });
-  const { data: lb } = useQuery({ queryKey:['leaderboard',id], queryFn:()=>api.get(`/tournaments/${id}/leaderboard`), refetchInterval: 3000 });
-  const { data: matches } = useQuery({ queryKey:['matches',id], queryFn:()=>api.get(`/tournaments/${id}/matches`), refetchInterval: 3000 });
-  const [queueStatus,setQueueStatus]=useState<string>('');
+  const { data: tournament, isLoading: tournamentLoading, isError: tournamentError, refetch: refetchTournament } = useQuery<TournamentDetails>({ queryKey: ['tournament', id], queryFn: () => api.get(`/tournaments/${id}`) });
+  const { data: participants } = useQuery<Participant[]>({ queryKey: ['participants', id], queryFn: () => api.get(`/tournaments/${id}/participants`) });
+  const { data: leaderboard } = useQuery({ queryKey: ['leaderboard', id], queryFn: () => api.get(`/tournaments/${id}/leaderboard`), refetchInterval: 5000 });
+  const { data: matches } = useQuery<TournamentMatch[]>({ queryKey: ['matches', id], queryFn: () => api.get(`/tournaments/${id}/matches`), refetchInterval: 5000 });
+  const [queueStatus, setQueueStatus] = useState('');
+  const [queued, setQueued] = useState(false);
 
-  useEffect(()=>{
-    const s=getSocket();
-    s.on('queue:joined', (d:any)=>{ if(d.tournamentId===id) setQueueStatus(`Queued – position ${d.position}. Waiting for opponent...`); });
-    s.on('queue:paired', (d:any)=>{ if(d.tournamentId===id) { setQueueStatus('Paired! Redirecting...'); router.push(`/play/${d.matchId}`); } });
-    s.on('tournament:paired', (d:any)=>{ if(d.tournamentId===id && (d.whitePlayerId===me?.id || d.blackPlayerId===me?.id)) { router.push(`/play/${d.matchId}`); } });
-    s.on('queue:error', (d:any)=> setQueueStatus(`Error: ${d.message}`));
-    return ()=>{ s.off('queue:joined'); s.off('queue:paired'); s.off('tournament:paired'); s.off('queue:error'); };
-  },[id, me]);
+  useEffect(() => {
+    const socket = getSocket();
+    const onJoined = (event: { tournamentId: string; position: number }) => {
+      if (event.tournamentId !== id) return;
+      setQueued(true);
+      setQueueStatus(`You’re in the queue · position ${event.position}. We’ll take you to the board as soon as an opponent is ready.`);
+    };
+    const onPaired = (event: { tournamentId: string; matchId: string }) => {
+      if (event.tournamentId !== id) return;
+      setQueueStatus('Opponent found! Opening your game…');
+      router.push(`/play/${event.matchId}`);
+    };
+    const onTournamentPaired = (event: { tournamentId: string; matchId: string; whitePlayerId: string; blackPlayerId: string }) => {
+      if (event.tournamentId === id && (event.whitePlayerId === me?.id || event.blackPlayerId === me?.id)) {
+        setQueueStatus('Opponent found! Opening your game…');
+        router.push(`/play/${event.matchId}`);
+      }
+    };
+    const onLeft = (event: { tournamentId: string }) => {
+      if (event.tournamentId === id) { setQueued(false); setQueueStatus('Search canceled. You can join the queue again any time.'); }
+    };
+    const onError = (event: { tournamentId?: string; message?: string }) => {
+      if (event.tournamentId !== id) return;
+      setQueued(false);
+      setQueueStatus(event.message || 'Could not join the queue. Try again.');
+    };
 
-  const joinMut = useMutation({ mutationFn:()=>api.post(`/tournaments/${id}/join`,{}), onSuccess:()=>qc.invalidateQueries() });
-  const findMut = useMutation({ mutationFn: async()=>{ const s=getSocket(); s.emit('queue:join',{ tournamentId: id }); setQueueStatus('Joining queue...'); }, });
+    socket.on('queue:joined', onJoined);
+    socket.on('queue:paired', onPaired);
+    socket.on('tournament:paired', onTournamentPaired);
+    socket.on('queue:left', onLeft);
+    socket.on('queue:error', onError);
+    return () => {
+      socket.off('queue:joined', onJoined);
+      socket.off('queue:paired', onPaired);
+      socket.off('tournament:paired', onTournamentPaired);
+      socket.off('queue:left', onLeft);
+      socket.off('queue:error', onError);
+    };
+  }, [id, me?.id, router]);
+
+  const isParticipant = Boolean(participants?.some((participant) => participant.id === me?.id));
+  const joinMutation = useMutation({
+    mutationFn: () => api.post(`/tournaments/${id}/join`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['participants', id] }),
+  });
+  const joinQueue = useMutation({
+    mutationFn: async () => {
+      setQueueStatus('Finding your next opponent…');
+      getSocket().emit('queue:join', { tournamentId: id });
+    },
+    onError: (error) => setQueueStatus((error as Error).message || 'Could not join the queue.'),
+  });
+
+  const cancelSearch = () => getSocket().emit('queue:leave', { tournamentId: id });
+  const myMatches = (matches || []).filter((match) => match.whitePlayerId === me?.id || match.blackPlayerId === me?.id);
+
+  if (tournamentLoading) return <div className="page-loading"><span className="loading-chess-piece">♞</span><p>Setting up the tournament…</p></div>;
+  if (tournamentError || !tournament) return <div className="data-error page-data-error" role="alert"><div><strong>Couldn’t open this tournament</strong><p>It may have been removed, or your connection may have dropped.</p></div><Button variant="outline" onClick={() => refetchTournament()}>Try again</Button><Link href="/student/tournaments" className="detail-back-link">Back to tournaments</Link></div>;
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">{tour?.name || 'Tournament'}</h1>
-      <div className="grid md:grid-cols-2 gap-4">
-        <Card><CardHeader><CardTitle>Play</CardTitle></CardHeader><CardContent className="space-y-3">
-          <Button variant="outline" onClick={()=>joinMut.mutate()} disabled={joinMut.isPending}>{joinMut.isPending?'Joining...':'Join Tournament'}</Button>
-          <Button onClick={()=>findMut.mutate()} className="w-full text-lg py-6" variant="secondary">🔍 Find Opponent</Button>
-          {queueStatus && <div className="text-sm p-2 bg-orange-50 border rounded">{queueStatus}</div>}
-          <div className="text-xs text-gray-500">Flow: Join → Find opponent → Server auto-pairs two waiting players → Both pushed to live game via Socket.IO – no refresh needed.</div>
-        </CardContent></Card>
-        <Card><CardHeader><CardTitle>Leaderboard</CardTitle></CardHeader><CardContent><Leaderboard data={lb?.leaderboard||[]} currentUserId={me?.id} /></CardContent></Card>
+    <div className="academy-page">
+      <Link href="/student/tournaments" className="detail-back-link">← All tournaments</Link>
+      <section className="tournament-detail-hero">
+        <div className="detail-hero-copy">
+          <span className={`status-badge status-${tournament.status}`}>{tournament.status === 'ongoing' ? 'Games in progress' : tournament.status === 'open' ? 'Registration open' : tournament.status}</span>
+          <h1>{tournament.name}</h1>
+          <p>Join the field, meet a new opponent, and climb the leaderboard one game at a time.</p>
+          <div className="detail-facts">
+            <span><i>◷</i><strong>{Math.floor(tournament.timeControlInitial / 60)}+{tournament.timeControlIncrement}</strong><small>minutes + increment</small></span>
+            <span><i>▦</i><strong>{new Date(tournament.startDate).toLocaleDateString([], { dateStyle: 'medium' })}</strong><small>{new Date(tournament.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small></span>
+            <span><i>♟</i><strong>{participants?.length ?? '—'}</strong><small>players joined</small></span>
+          </div>
+        </div>
+        <div className="detail-hero-art" aria-hidden="true"><span>♞</span><i>YOUR<br />NEXT<br />GAME</i><b>✦</b></div>
+      </section>
+
+      <div className="detail-dashboard-grid">
+        <div className="detail-main-column">
+          <section className="play-cta-card">
+            <div className="play-cta-copy"><span className="cta-icon">♟</span><div><p className="section-eyebrow">READY WHEN YOU ARE</p><h2>Find your next opponent</h2><p>We’ll pair you with another student and open the live board automatically.</p></div></div>
+            {!isParticipant ? <Button variant="secondary" onClick={() => joinMutation.mutate()} disabled={joinMutation.isPending || tournament.status !== 'open'}>{joinMutation.isPending ? 'Joining…' : tournament.status === 'open' ? 'Join tournament' : 'Registration closed'}</Button>
+              : queued ? <Button variant="outline" onClick={cancelSearch}>Cancel search</Button>
+              : <Button variant="secondary" onClick={() => { setQueued(true); joinQueue.mutate(); }} disabled={queued || joinQueue.isPending || tournament.status === 'completed'}>{joinQueue.isPending ? 'Searching…' : 'Find opponent →'}</Button>}
+          </section>
+          {joinMutation.isError && <div className="inline-feedback" role="alert">{(joinMutation.error as Error).message || 'Could not join this tournament.'}</div>}
+          {queueStatus && <div className={`queue-status-message ${queued ? 'queue-status-active' : ''}`} role="status"><span className="queue-status-icon">{queued ? '◌' : '♟'}</span><span>{queueStatus}</span>{queued && <span className="queue-searching"><i /><i /><i /></span>}</div>}
+          {joinQueue.isError && !queueStatus && <div className="inline-feedback" role="alert">{(joinQueue.error as Error).message}</div>}
+
+          <section className="detail-content-card">
+            <div className="detail-card-heading"><div><p className="section-eyebrow">YOUR RECENT GAMES</p><h2>Match history</h2></div><span className="section-count">{myMatches.length} games</span></div>
+            {myMatches.length ? <div className="detail-match-list">{myMatches.map((match) => {
+              const isWhite = match.whitePlayerId === me?.id;
+              const opponent = isWhite ? match.blackPlayer : match.whitePlayer;
+              return <button type="button" key={match.id} className="detail-match-row" onClick={() => router.push(`/play/${match.id}`)}>
+                <span className={`match-list-avatar ${match.status === 'ongoing' ? 'match-list-avatar-live' : ''}`}>{match.status === 'ongoing' ? '●' : '♟'}</span>
+                <span className="detail-match-main"><strong>vs {opponent?.name || 'Opponent'}</strong><small>You played {isWhite ? 'White' : 'Black'} · {new Date(match.createdAt).toLocaleString()}</small></span>
+                <span className={`detail-match-result ${match.status === 'ongoing' ? 'detail-result-live' : ''}`}>{match.status === 'ongoing' ? 'LIVE' : match.result ? match.result.replace('_', ' ') : 'FINISHED'}</span>
+                <span className="detail-match-arrow">→</span>
+              </button>;
+            })}</div> : <div className="detail-empty"><span>♘</span><strong>Your first game is waiting</strong><p>Find an opponent and your matches will show up here.</p></div>}
+          </section>
+        </div>
+
+        <section className="detail-content-card leaderboard-card">
+          <div className="detail-card-heading"><div><p className="section-eyebrow">TOURNAMENT STANDINGS</p><h2>Leaderboard</h2></div><span className="leaderboard-trophy">♛</span></div>
+          <Leaderboard data={leaderboard?.leaderboard || []} currentUserId={me?.id} />
+          <p className="leaderboard-note">Win 1 point · Draw ½ point · Loss 0 points</p>
+        </section>
       </div>
-      <Card><CardHeader><CardTitle>My Match History (this tournament)</CardTitle></CardHeader><CardContent className="text-sm space-y-1">{matches?.filter((m:any)=>m.whitePlayerId===me?.id || m.blackPlayerId===me?.id).map((m:any)=><div key={m.id} className="flex justify-between border-b py-1"><span onClick={()=>router.push(`/play/${m.id}`)} className="cursor-pointer underline">{m.id.slice(0,8)} – {m.status} {m.result? `(${m.result})`:''}</span><span>{new Date(m.createdAt).toLocaleTimeString()}</span></div>) || 'No matches yet'}</CardContent></Card>
     </div>
   );
 }

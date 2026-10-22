@@ -73,7 +73,7 @@ export class MatchesGateway implements OnGatewayConnection {
       } else {
         client.emit('queue:joined', { tournamentId: data.tournamentId, position: res.position });
       }
-    } catch (e:any) { client.emit('queue:error', { message: e.message }); }
+    } catch (e:any) { client.emit('queue:error', { tournamentId: data.tournamentId, message: e.message }); }
   }
 
   @SubscribeMessage('queue:leave')

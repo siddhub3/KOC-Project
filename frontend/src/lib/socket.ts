@@ -6,3 +6,8 @@ export function getSocket(): Socket {
   socket = io(BASE, { withCredentials: true, transports: ['websocket','polling'] });
   return socket;
 }
+
+export function disconnectSocket() {
+  socket?.disconnect();
+  socket = null;
+}
